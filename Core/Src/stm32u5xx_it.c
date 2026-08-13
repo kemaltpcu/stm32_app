@@ -42,6 +42,8 @@
 /* Private variables ---------------------------------------------------------*/
 /* USER CODE BEGIN PV */
 
+extern UART_HandleTypeDef hcom_uart[];
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -228,5 +230,10 @@ void TIM17_IRQHandler(void)
 }
 
 /* USER CODE BEGIN 1 */
+
+void USART1_IRQHandler(void)
+{
+    HAL_UART_IRQHandler(&hcom_uart[COM1]);
+}
 
 /* USER CODE END 1 */

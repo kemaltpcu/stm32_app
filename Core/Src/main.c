@@ -45,6 +45,15 @@
 COM_InitTypeDef BspCOMInit;
 
 /* USER CODE BEGIN PV */
+#define RX_BUFFER_SIZE 64U
+
+static uint8_t rxByte;
+
+static char rxBuffer[RX_BUFFER_SIZE];
+
+static volatile uint32_t rxIndex = 0U;
+
+static volatile uint8_t commandReady = 0U;
 
 extern UART_HandleTypeDef hcom_uart[];
 
@@ -62,6 +71,31 @@ static void MX_FLASH_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+    if (huart->Instance == USART1)
+    {
+        if ((rxByte == '\r') || (rxByte == '\n'))
+        {
+            if (rxIndex > 0U)
+            {
+                rxBuffer[rxIndex] = '\0';
+                commandReady = 1U;
+            }
+        }
+        else
+        {
+            if (rxIndex < (RX_BUFFER_SIZE - 1U))
+            {
+                rxBuffer[rxIndex] = (char)rxByte;
+                rxIndex++;
+            }
+        }
+
+        HAL_UART_Receive_IT(&hcom_uart[COM1], &rxByte, 1U);
+    }
+}
 
 /* USER CODE END 0 */
 
@@ -121,14 +155,26 @@ int main(void)
   BspCOMInit.HwFlowCtl  = COM_HWCONTROL_NONE;
   if (BSP_COM_Init(COM1, &BspCOMInit) != BSP_ERROR_NONE)
   {
-    Error_Handler();
+      Error_Handler();
+  }
+
+  HAL_NVIC_SetPriority(USART1_IRQn, 5U, 0U);
+  HAL_NVIC_EnableIRQ(USART1_IRQn);
+
+  HAL_UART_Transmit(&hcom_uart[COM1], (uint8_t *)message, strlen(message), 1000U);
+
+  if (HAL_UART_Receive_IT(&hcom_uart[COM1], &rxByte, 1U) != HAL_OK)
+  {
+      Error_Handler();
   }
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   HAL_UART_Transmit(&hcom_uart[COM1], (uint8_t *)message, strlen(message),1000);
 
-  GPIO_PinState previousButtonState = GPIO_PIN_RESET;
+  HAL_UART_Receive_IT(&hcom_uart[COM1], &rxByte, 1U);
+
+  uint8_t ledState = 0U;
 
   while (1)
   {
@@ -136,34 +182,46 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-	  GPIO_PinState buttonState;
+	  if (commandReady != 0U)
+	      {
+			  char message[128];
 
-	  buttonState = HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13);
+			  commandReady = 0U;
 
-	  if (buttonState != previousButtonState)
-	  {
-		  char message[40];
+			  if (strcmp(rxBuffer, "TEST") == 0)
+			  {
+				  strcpy(message, "OK TEST\r\n");
+			  }
 
-		  if (buttonState == GPIO_PIN_SET)
-		  {
-			  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_7, GPIO_PIN_SET);
+			  else if (strcmp(rxBuffer, "LED 1") == 0)
+			  {
+				  ledState = 1U;
+				  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_7, GPIO_PIN_SET);
+				  strcpy(message, "OK LED=1\r\n");
+			  }
 
-			  strcpy(message, "BUTTON=1 LED=1\r\n");
-		  }
-		  else
-		  {
-			  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_7, GPIO_PIN_RESET);
+			  else if (strcmp(rxBuffer, "LED 0") == 0)
+			  {
+				  ledState = 0U;
 
-			  strcpy(message, "BUTTON=0 LED=0\r\n");
-		  }
+				  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_7, GPIO_PIN_RESET);
+				  strcpy(message, "OK LED=0\r\n");
+			  }
 
-		  HAL_UART_Transmit(&hcom_uart[COM1], (uint8_t *)message, strlen(message),1000U);
+			  else if (strcmp(rxBuffer, "GET LED") == 0)
+			  {
+				  snprintf(message, sizeof(message), "OK LED=%u\r\n",(unsigned int)ledState);
+			  }
 
-		  previousButtonState = buttonState;
-	  }
+			  else
+			  {
+				  snprintf(message, sizeof(message), "Message: %s\r\n", rxBuffer);
+			  }
 
-	  HAL_Delay(10);
-
+			  HAL_UART_Transmit(&hcom_uart[COM1], (uint8_t *)message, strlen(message), 1000U);
+			  rxIndex = 0U;
+			  memset(rxBuffer, 0, sizeof(rxBuffer));
+	      }
   }
   /* USER CODE END 3 */
 }
