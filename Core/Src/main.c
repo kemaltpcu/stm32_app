@@ -213,6 +213,15 @@ int main(void)
 				  snprintf(message, sizeof(message), "OK LED=%u\r\n",(unsigned int)ledState);
 			  }
 
+			  else if (strcmp(rxBuffer, "GET BUTTON") == 0)
+			  {
+			      GPIO_PinState buttonState;
+
+			      buttonState = BSP_PB_GetState(BUTTON_USER);
+
+			      snprintf(message, sizeof(message), "OK BUTTON=%u\r\n", (unsigned int)buttonState);
+			  }
+
 			  else
 			  {
 				  snprintf(message, sizeof(message), "Message: %s\r\n", rxBuffer);
