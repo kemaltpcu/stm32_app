@@ -31,8 +31,9 @@ void Reset_BME280(void){
 	HAL_I2C_Mem_Read(&bme_i2c, BME280_ADDR, CHIP_ID_REG_ADDR, 1, &id, 1, HAL_MAX_DELAY);
 
 	//If value of id register is not equal to BME280 chip id which is 0x60, wait until equal to each other
-	while(id != CHIP_ID_BME){
-		printf("BME280-> Undefined chip id\n");
+	while(id != CHIP_ID_BME)
+	{
+		printf("BME280-> Undefined chip id\r\n");
 		HAL_Delay(500);
 	}
 }
@@ -219,7 +220,6 @@ void BME280Init(BME280_Init_t BME280Init){
 	//Setting it to sleep mode because the config register can only be changed while the BME280 is in sleep mode
 	if(BME280_SleepMode() == HAL_OK){
 
-		printf("BME280 was put into sleep mode so that the config register could be set.!\r\n");
 		//Configuration of config register which is control standby time, filter and SPI 3-wire interface
 		init = ((BME280Init.T_StandBy << 5) | (BME280Init.Filter << 2) | (BME280Init.SPI_EnOrDıs << 0));
 		HAL_I2C_Mem_Write(&bme_i2c, BME280_ADDR, CONFIG_REG_ADDR, 1, &init, 1, 1000);

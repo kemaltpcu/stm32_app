@@ -41,7 +41,7 @@ extern I2C_HandleTypeDef hi2c2;
  *	 ===============================================================================
  *
  *
- * All possible OVERSAMPLING amount for pressure, temperatur and humidity
+ * All possible OVERSAMPLING amount for pressure, temperature and humidity
  */
 #define OVERSAMPLING_SKIPPED  		0x0
 #define OVERSAMPLING_1				0x1

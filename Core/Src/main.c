@@ -24,6 +24,7 @@
 /* USER CODE BEGIN Includes */
 #include "stdio.h"
 #include "string.h"
+#include "SSD1306_OLED.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -61,6 +62,7 @@ static volatile uint8_t commandReady = 0U;
 extern UART_HandleTypeDef hcom_uart[];
 
 static BME280_Data_t bmeData;
+static uint32_t lastOledUpdate = 0U;
 
 /* USER CODE END PV */
 
@@ -73,7 +75,8 @@ static void MX_FLASH_Init(void);
 static void MX_I2C2_Init(void);
 /* USER CODE BEGIN PFP */
 
-static void Sensor_Init(void);
+static void Sensors_Init(void);
+static void OLED_Update(void);
 
 /* USER CODE END PFP */
 
@@ -179,7 +182,10 @@ int main(void)
   HAL_I2C_IsDeviceReady(&hi2c2, (0x77U << 1), 3U, 100U);
 
   uint8_t ledState = 0U;
-  Sensor_Init();
+  Sensors_Init();
+
+  OLED_Update();
+  lastOledUpdate = HAL_GetTick();
 
   while (1)
   {
@@ -187,6 +193,12 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+      if ((HAL_GetTick() - lastOledUpdate) >= 1000U)
+      {
+          lastOledUpdate = HAL_GetTick();
+          OLED_Update();
+      }
+
 	  if (commandReady != 0U)
 	  {
 		  char message[128];
@@ -500,8 +512,9 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-static void Sensor_Init(void)
+static void Sensors_Init(void)
 {
+	//BME280 ENV sensor INIT
     BME280_Init_t config = {0};
 
     Reset_BME280();
@@ -515,6 +528,59 @@ static void Sensor_Init(void)
     config.T_StandBy      = T_SB_250;
 
     BME280Init(config);
+
+    //OLED Screen INIT
+    if (SSD1306_Init(&hi2c2) != HAL_OK)
+    {
+      Error_Handler();
+    }
+
+}
+
+static void OLED_Update(void)
+{
+    char line[24];
+
+    BME280Calculation(&bmeData);
+
+    int32_t temp10 = (int32_t)(bmeData.Temperature * 10.0f);
+    uint32_t hum10 = (uint32_t)(bmeData.Humidity * 10.0f);
+    uint32_t press10 = (uint32_t)(bmeData.Pressure * 10.0f);
+
+    uint32_t tempAbs;
+
+    if (temp10 < 0)
+    {
+        tempAbs = (uint32_t)(-temp10);
+    }
+    else
+    {
+        tempAbs = (uint32_t)temp10;
+    }
+
+    SSD1306_Clear();
+
+    SSD1306_SetCursor(0U, 0U);
+    snprintf(line, sizeof(line), "%s", BOARD_NAME);
+    SSD1306_WriteString(line);
+
+    SSD1306_SetCursor(0U, 8U);
+    snprintf(line, sizeof(line), "FW %s", FW_VERSION);
+    SSD1306_WriteString(line);
+
+    SSD1306_SetCursor(0U, 24U);
+    snprintf(line, sizeof(line), "TEMP %s%lu.%lu C", (temp10 < 0) ? "-" : "" ,(tempAbs / 10U),(tempAbs % 10U));
+    SSD1306_WriteString(line);
+
+    SSD1306_SetCursor(0U, 32U);
+    snprintf(line, sizeof(line), "HUM %lu.%lu %%",(hum10 / 10U),(hum10 % 10U));
+    SSD1306_WriteString(line);
+
+    SSD1306_SetCursor(0U, 40U);
+    snprintf(line, sizeof(line), "PRESS %lu.%lu HPA",(press10 / 10U),(press10 % 10U));
+    SSD1306_WriteString(line);
+
+    (void)SSD1306_UpdateScreen();
 }
 /* USER CODE END 4 */
 
