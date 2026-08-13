@@ -44,6 +44,8 @@
 
 COM_InitTypeDef BspCOMInit;
 
+I2C_HandleTypeDef hi2c2;
+
 /* USER CODE BEGIN PV */
 #define RX_BUFFER_SIZE 64U
 
@@ -65,6 +67,7 @@ static void SystemPower_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_ICACHE_Init(void);
 static void MX_FLASH_Init(void);
+static void MX_I2C2_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -108,7 +111,7 @@ int main(void)
 
   /* USER CODE BEGIN 1 */
 
-  char message[] = "Hello from STM32U575!\r\n";
+  char message[64] = "Hello from STM32U575!\r\n";
 
   /* USER CODE END 1 */
 
@@ -135,6 +138,7 @@ int main(void)
   MX_GPIO_Init();
   MX_ICACHE_Init();
   MX_FLASH_Init();
+  MX_I2C2_Init();
   /* USER CODE BEGIN 2 */
 
   /* USER CODE END 2 */
@@ -155,24 +159,33 @@ int main(void)
   BspCOMInit.HwFlowCtl  = COM_HWCONTROL_NONE;
   if (BSP_COM_Init(COM1, &BspCOMInit) != BSP_ERROR_NONE)
   {
-      Error_Handler();
-  }
-
-  HAL_NVIC_SetPriority(USART1_IRQn, 5U, 0U);
-  HAL_NVIC_EnableIRQ(USART1_IRQn);
-
-  HAL_UART_Transmit(&hcom_uart[COM1], (uint8_t *)message, strlen(message), 1000U);
-
-  if (HAL_UART_Receive_IT(&hcom_uart[COM1], &rxByte, 1U) != HAL_OK)
-  {
-      Error_Handler();
+    Error_Handler();
   }
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+  HAL_NVIC_SetPriority(USART1_IRQn, 5U, 0U);
+  HAL_NVIC_EnableIRQ(USART1_IRQn);
+
   HAL_UART_Transmit(&hcom_uart[COM1], (uint8_t *)message, strlen(message),1000);
 
   HAL_UART_Receive_IT(&hcom_uart[COM1], &rxByte, 1U);
+  HAL_StatusTypeDef status;
+
+  status = HAL_I2C_IsDeviceReady(&hi2c2, (0x77U << 1), 3U, 100U);
+
+  if (status == HAL_OK)
+  {
+      strcpy(message, "BME280 is ready!\r\n");
+  }
+  else
+  {
+      strcpy(message, "BME280 is not ready!\r\n");
+  }
+  HAL_UART_Transmit(&hcom_uart[COM1], (uint8_t *)message, strlen(message),1000);
+
+  uint8_t chipId = 0U;
+  HAL_StatusTypeDef i2cStatus = 0;
 
   uint8_t ledState = 0U;
 
@@ -183,61 +196,74 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
 	  if (commandReady != 0U)
-	      {
-			  char message[128];
+	  {
+		  char message[128];
 
-			  commandReady = 0U;
+		  if (strcmp(rxBuffer, "TEST") == 0)
+		  {
+			  strcpy(message, "OK TEST\r\n");
+		  }
 
-			  if (strcmp(rxBuffer, "TEST") == 0)
-			  {
-				  strcpy(message, "OK TEST\r\n");
-			  }
+		  else if (strcmp(rxBuffer, "LED 1") == 0)
+		  {
+			  ledState = 1U;
+			  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_7, GPIO_PIN_SET);
+			  strcpy(message, "OK LED=1\r\n");
+		  }
 
-			  else if (strcmp(rxBuffer, "LED 1") == 0)
-			  {
-				  ledState = 1U;
-				  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_7, GPIO_PIN_SET);
-				  strcpy(message, "OK LED=1\r\n");
-			  }
+		  else if (strcmp(rxBuffer, "LED 0") == 0)
+		  {
+			  ledState = 0U;
 
-			  else if (strcmp(rxBuffer, "LED 0") == 0)
-			  {
-				  ledState = 0U;
+			  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_7, GPIO_PIN_RESET);
+			  strcpy(message, "OK LED=0\r\n");
+		  }
 
-				  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_7, GPIO_PIN_RESET);
-				  strcpy(message, "OK LED=0\r\n");
-			  }
+		  else if (strcmp(rxBuffer, "GET LED") == 0)
+		  {
+			  snprintf(message, sizeof(message), "OK LED=%u\r\n",(unsigned int)ledState);
+		  }
 
-			  else if (strcmp(rxBuffer, "GET LED") == 0)
-			  {
-				  snprintf(message, sizeof(message), "OK LED=%u\r\n",(unsigned int)ledState);
-			  }
+		  else if (strcmp(rxBuffer, "GET BUTTON") == 0)
+		  {
+			  GPIO_PinState buttonState;
 
-			  else if (strcmp(rxBuffer, "GET BUTTON") == 0)
-			  {
-			      GPIO_PinState buttonState;
+			  buttonState = BSP_PB_GetState(BUTTON_USER);
 
-			      buttonState = BSP_PB_GetState(BUTTON_USER);
+			  snprintf(message, sizeof(message), "OK BUTTON=%u\r\n", (unsigned int)buttonState);
+		  }
 
-			      snprintf(message, sizeof(message), "OK BUTTON=%u\r\n", (unsigned int)buttonState);
-			  }
+		  else if (strcmp(rxBuffer, "GET INFO") == 0)
+		  {
+			  snprintf(message, sizeof(message),
+					   "OK DEVICE= %s BOARD= %s FW= %s\r\n",
+					   DEVICE_NAME, BOARD_NAME, FW_VERSION );
+		  }
 
-			  else if (strcmp(rxBuffer, "GET INFO") == 0)
-			  {
-			      snprintf(message, sizeof(message),
-			               "OK DEVICE= %s BOARD= %s FW= %s\r\n",
-			               DEVICE_NAME, BOARD_NAME, FW_VERSION );
-			  }
+		  else if (strcmp(rxBuffer, "GET BME280") == 0)
+		  {
+			i2cStatus  = HAL_I2C_Mem_Read(&hi2c2, (0x77U << 1),0xD0, I2C_MEMADD_SIZE_8BIT,&chipId,1,100);
+			if (i2cStatus == HAL_OK)
+			{
+				snprintf(message, sizeof(message), "OK BME280_ID=0x%02X\r\n", (unsigned int)chipId);
+			}
+			else
+			{
+				strcpy(message, "ERR BME280_READ_FAILED\r\n");
+			}
+		  }
 
-			  else
-			  {
-				  snprintf(message, sizeof(message), "Message: %s\r\n", rxBuffer);
-			  }
+		  else
+		  {
+			  snprintf(message, sizeof(message), "Message: %s\r\n", rxBuffer);
+		  }
 
-			  HAL_UART_Transmit(&hcom_uart[COM1], (uint8_t *)message, strlen(message), 1000U);
-			  rxIndex = 0U;
-			  memset(rxBuffer, 0, sizeof(rxBuffer));
-	      }
+		  HAL_UART_Transmit(&hcom_uart[COM1], (uint8_t *)message, strlen(message), 1000U);
+		  rxIndex = 0U;
+		  memset(rxBuffer, 0, sizeof(rxBuffer));
+		  commandReady = 0U;
+	  }
+
   }
   /* USER CODE END 3 */
 }
@@ -348,6 +374,54 @@ static void MX_FLASH_Init(void)
 }
 
 /**
+  * @brief I2C2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_I2C2_Init(void)
+{
+
+  /* USER CODE BEGIN I2C2_Init 0 */
+
+  /* USER CODE END I2C2_Init 0 */
+
+  /* USER CODE BEGIN I2C2_Init 1 */
+
+  /* USER CODE END I2C2_Init 1 */
+  hi2c2.Instance = I2C2;
+  hi2c2.Init.Timing = 0x30909DEC;
+  hi2c2.Init.OwnAddress1 = 0;
+  hi2c2.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
+  hi2c2.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
+  hi2c2.Init.OwnAddress2 = 0;
+  hi2c2.Init.OwnAddress2Masks = I2C_OA2_NOMASK;
+  hi2c2.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
+  hi2c2.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
+  if (HAL_I2C_Init(&hi2c2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Configure Analogue filter
+  */
+  if (HAL_I2CEx_ConfigAnalogFilter(&hi2c2, I2C_ANALOGFILTER_ENABLE) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Configure Digital filter
+  */
+  if (HAL_I2CEx_ConfigDigitalFilter(&hi2c2, 0) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN I2C2_Init 2 */
+
+  /* USER CODE END I2C2_Init 2 */
+
+}
+
+/**
   * @brief ICACHE Initialization Function
   * @param None
   * @retval None
@@ -390,6 +464,7 @@ static void MX_GPIO_Init(void)
 /* USER CODE END MX_GPIO_Init_1 */
 
   /* GPIO Ports Clock Enable */
+  __HAL_RCC_GPIOF_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
