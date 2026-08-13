@@ -17,6 +17,7 @@
   */
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
+#include "BME280_STM32.h"
 #include "main.h"
 
 /* Private includes ----------------------------------------------------------*/
@@ -59,6 +60,8 @@ static volatile uint8_t commandReady = 0U;
 
 extern UART_HandleTypeDef hcom_uart[];
 
+static BME280_Data_t bmeData;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -69,6 +72,8 @@ static void MX_ICACHE_Init(void);
 static void MX_FLASH_Init(void);
 static void MX_I2C2_Init(void);
 /* USER CODE BEGIN PFP */
+
+static void Sensor_Init(void);
 
 /* USER CODE END PFP */
 
@@ -170,24 +175,11 @@ int main(void)
   HAL_UART_Transmit(&hcom_uart[COM1], (uint8_t *)message, strlen(message),1000);
 
   HAL_UART_Receive_IT(&hcom_uart[COM1], &rxByte, 1U);
-  HAL_StatusTypeDef status;
 
-  status = HAL_I2C_IsDeviceReady(&hi2c2, (0x77U << 1), 3U, 100U);
-
-  if (status == HAL_OK)
-  {
-      strcpy(message, "BME280 is ready!\r\n");
-  }
-  else
-  {
-      strcpy(message, "BME280 is not ready!\r\n");
-  }
-  HAL_UART_Transmit(&hcom_uart[COM1], (uint8_t *)message, strlen(message),1000);
-
-  uint8_t chipId = 0U;
-  HAL_StatusTypeDef i2cStatus = 0;
+  HAL_I2C_IsDeviceReady(&hi2c2, (0x77U << 1), 3U, 100U);
 
   uint8_t ledState = 0U;
+  Sensor_Init();
 
   while (1)
   {
@@ -242,15 +234,50 @@ int main(void)
 
 		  else if (strcmp(rxBuffer, "GET BME280") == 0)
 		  {
-			i2cStatus  = HAL_I2C_Mem_Read(&hi2c2, (0x77U << 1),0xD0, I2C_MEMADD_SIZE_8BIT,&chipId,1,100);
-			if (i2cStatus == HAL_OK)
-			{
-				snprintf(message, sizeof(message), "OK BME280_ID=0x%02X\r\n", (unsigned int)chipId);
-			}
-			else
-			{
-				strcpy(message, "ERR BME280_READ_FAILED\r\n");
-			}
+		      uint8_t chipId = 0U;
+
+		      HAL_StatusTypeDef status;
+
+		      status = HAL_I2C_Mem_Read(&hi2c2,
+		                                BME280_ADDR,
+		                                CHIP_ID_REG_ADDR,
+		                                I2C_MEMADD_SIZE_8BIT,
+		                                &chipId,
+		                                1U,
+		                                100U);
+
+		      if (status == HAL_OK)
+		      {
+		          BME280Calculation(&bmeData);
+
+		          int32_t temp100;
+		          uint32_t humidity100;
+		          uint32_t pressure100;
+		          uint32_t tempAbs;
+
+		          temp100     = (int32_t)(bmeData.Temperature * 100.0f);
+		          humidity100 = (uint32_t)(bmeData.Humidity * 100.0f);
+		          pressure100 = (uint32_t)(bmeData.Pressure * 100.0f);
+
+		          if (temp100 < 0)
+		          {
+		              tempAbs = (uint32_t)(-temp100);
+		          }
+		          else
+		          {
+		              tempAbs = (uint32_t)temp100;
+		          }
+
+		          snprintf(message, sizeof(message),
+		                   "OK BME280 ID=0x%02X TEMP=%s%lu.%02luC HUM=%lu.%02lu%% PRESS=%lu.%02luhPa\r\n",
+		                   (unsigned int)chipId, (temp100 < 0) ? "-" : "", (unsigned long)(tempAbs / 100U), (unsigned long)(tempAbs % 100U),
+		                   (unsigned long)(humidity100 / 100U), (unsigned long)(humidity100 % 100U),
+						   (unsigned long)(pressure100 / 100U), (unsigned long)(pressure100 % 100U));
+		      }
+		      else
+		      {
+		          strcpy(message, "ERR BME280_READ_FAILED\r\n");
+		      }
 		  }
 
 		  else
@@ -473,7 +500,22 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+static void Sensor_Init(void)
+{
+    BME280_Init_t config = {0};
 
+    Reset_BME280();
+
+    config.Filter         = FILTER_8;
+    config.Mode           = BME280_NORMAL_MODE;
+    config.OverSampling_H = OVERSAMPLING_16;
+    config.OverSampling_P = OVERSAMPLING_16;
+    config.OverSampling_T = OVERSAMPLING_16;
+    config.SPI_EnOrDıs    = SPI3_W_DISABLE;
+    config.T_StandBy      = T_SB_250;
+
+    BME280Init(config);
+}
 /* USER CODE END 4 */
 
 /**
