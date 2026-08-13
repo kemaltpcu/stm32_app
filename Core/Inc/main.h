@@ -62,6 +62,10 @@ void Error_Handler(void);
 
 /* USER CODE BEGIN Private defines */
 
+#define DEVICE_NAME       "KT_1"
+#define BOARD_NAME        "NUCLEO-U575ZI-Q"
+#define FW_VERSION        "0.0.1"
+
 /* USER CODE END Private defines */
 
 #ifdef __cplusplus

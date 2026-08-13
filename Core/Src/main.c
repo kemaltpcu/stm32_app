@@ -222,6 +222,13 @@ int main(void)
 			      snprintf(message, sizeof(message), "OK BUTTON=%u\r\n", (unsigned int)buttonState);
 			  }
 
+			  else if (strcmp(rxBuffer, "GET INFO") == 0)
+			  {
+			      snprintf(message, sizeof(message),
+			               "OK DEVICE= %s BOARD= %s FW= %s\r\n",
+			               DEVICE_NAME, BOARD_NAME, FW_VERSION );
+			  }
+
 			  else
 			  {
 				  snprintf(message, sizeof(message), "Message: %s\r\n", rxBuffer);
