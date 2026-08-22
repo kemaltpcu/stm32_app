@@ -10,30 +10,29 @@ public sealed class STM32Device : IDisposable
     public const int DefaultTimeoutMs = 1000;
 
     private readonly SerialPort _serialPort;
-
     private readonly SemaphoreSlim _serialLock = new(1, 1);
 
     private static readonly Regex InfoPattern = new(
         @"^OK\s+DEVICE=\s*(?<device>\S+)\s+" +
         @"BOARD=\s*(?<board>\S+)\s+" +
         @"FW=\s*(?<fw>\S+)\s*$",
-        RegexOptions.Compiled);
+        RegexOptions.Compiled
+    );
 
     private static readonly Regex Bme280Pattern = new(
         @"^OK\s+BME280\s+" +
-        @"ID=0x(?<id>[0-9A-Fa-f]{2})\s+" +
+        @"(?:ID=0x[0-9A-Fa-f]{2}\s+)?" +
         @"TEMP=(?<temp>-?\d+(?:\.\d+)?)C\s+" +
         @"HUM=(?<hum>\d+(?:\.\d+)?)%\s+" +
         @"PRESS=(?<press>\d+(?:\.\d+)?)hPa\s*$",
-        RegexOptions.Compiled |
-        RegexOptions.IgnoreCase);
+        RegexOptions.Compiled | RegexOptions.IgnoreCase
+    );
 
     public string PortName { get; }
 
     public int BaudRate { get; }
 
     public bool IsConnected => _serialPort.IsOpen;
-
 
     public STM32Device(string portName, int baudRate = DefaultBaudRate)
     {
@@ -44,29 +43,21 @@ public sealed class STM32Device : IDisposable
         {
             PortName = portName,
             BaudRate = baudRate,
-
             DataBits = 8,
             Parity = Parity.None,
             StopBits = StopBits.One,
-
             ReadTimeout = DefaultTimeoutMs,
             WriteTimeout = DefaultTimeoutMs,
-
             NewLine = "\n"
         };
 
         Open();
     }
 
-
     public static string[] AvailablePorts()
     {
-        return SerialPort
-            .GetPortNames()
-            .OrderBy(port => port)
-            .ToArray();
+        return SerialPort.GetPortNames().OrderBy(port => port).ToArray();
     }
-
 
     private void Open()
     {
@@ -83,7 +74,6 @@ public sealed class STM32Device : IDisposable
         }
     }
 
-
     public void Close()
     {
         if (_serialPort.IsOpen)
@@ -91,7 +81,6 @@ public sealed class STM32Device : IDisposable
             _serialPort.Close();
         }
     }
-
 
     public async Task<string> SendCommandAsync(string command, CancellationToken cancellationToken = default)
     {
@@ -122,7 +111,7 @@ public sealed class STM32Device : IDisposable
 
                         string response = _serialPort.ReadLine().Trim();
 
-                        if (response.StartsWith("ERR",StringComparison.OrdinalIgnoreCase))
+                        if (response.StartsWith("ERR", StringComparison.OrdinalIgnoreCase))
                         {
                             throw new STM32DeviceException(response);
                         }
@@ -151,13 +140,12 @@ public sealed class STM32Device : IDisposable
         }
     }
 
-
     public async Task<bool> TestAsync(CancellationToken cancellationToken = default)
     {
         string response = await SendCommandAsync("TEST", cancellationToken);
+
         return response == "OK TEST";
     }
-
 
     public async Task<DeviceInfo> GetInfoAsync(CancellationToken cancellationToken = default)
     {
@@ -173,9 +161,9 @@ public sealed class STM32Device : IDisposable
         return new DeviceInfo(
             Device: match.Groups["device"].Value,
             Board: match.Groups["board"].Value,
-            Firmware: match.Groups["fw"].Value);
+            Firmware: match.Groups["fw"].Value
+        );
     }
-
 
     public async Task<BME280Data> GetBme280Async(CancellationToken cancellationToken = default)
     {
@@ -188,41 +176,33 @@ public sealed class STM32Device : IDisposable
             throw new STM32DeviceException($"Unexpected GET BME280 response: {response}");
         }
 
-        int chipId = Convert.ToInt32(match.Groups["id"].Value, 16);
-
         double temperature = double.Parse(match.Groups["temp"].Value, CultureInfo.InvariantCulture);
-
         double humidity = double.Parse(match.Groups["hum"].Value, CultureInfo.InvariantCulture);
-
         double pressure = double.Parse(match.Groups["press"].Value, CultureInfo.InvariantCulture);
 
         return new BME280Data(
-            ChipId: chipId,
             Temperature: temperature,
             Humidity: humidity,
-            Pressure: pressure);
+            Pressure: pressure
+        );
     }
-
 
     public Task<string> SetLedAsync(bool state, CancellationToken cancellationToken = default)
     {
         string command = state ? "LED 1" : "LED 0";
 
-        return SendCommandAsync(command,cancellationToken );
+        return SendCommandAsync(command, cancellationToken);
     }
-
 
     public Task<string> GetLedAsync(CancellationToken cancellationToken = default)
     {
         return SendCommandAsync("GET LED", cancellationToken);
     }
 
-
     public Task<string> GetButtonAsync(CancellationToken cancellationToken = default)
     {
-        return SendCommandAsync( "GET BUTTON", cancellationToken);
+        return SendCommandAsync("GET BUTTON", cancellationToken);
     }
-
 
     public void Dispose()
     {
